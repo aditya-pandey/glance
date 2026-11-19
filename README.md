@@ -21,22 +21,38 @@ Built strictly with native Apple frameworks (**Swift, SwiftUI, AppKit, ScreenCap
 
 ---
 
-## Requirements
+## Download & Install (No Xcode Required)
 
-- **macOS 14.0 (Sonoma)** or newer
-- **Xcode** or **Xcode Command Line Tools** (to build from source)
+Download the pre-built **Universal app** (`Apple Silicon + Intel`, macOS 14.0+) directly from **[GitHub Releases](https://github.com/aditya-pandey/glance/releases/latest)**:
+
+1. Download **`Glance-macOS-Universal.dmg`** (or `Glance-macOS-Universal.zip`).
+2. Open the DMG and drag **`Glance.app`** into **`Applications`**.
+3. Open **Glance** once. Because free personal releases aren't Apple-notarized, macOS Gatekeeper may ask on first launch:
+   - Either open **System Settings → Privacy & Security → Open Anyway**, or run:
+     ```bash
+     xattr -cr /Applications/Glance.app && open /Applications/Glance.app
+     ```
+4. Enable **Accessibility** and **Screen & System Audio Recording** in the Permissions window, then click **Relaunch**.
 
 ---
 
-## Build & Install
+## Requirements (Only If Building From Source)
+
+- **macOS 14.0 (Sonoma)** or newer
+- **Xcode** or **Xcode Command Line Tools** (`xcode-select --install`)
+
+---
+
+## Build From Source (Optional)
 
 ```bash
-cd window_wheel
+git clone https://github.com/aditya-pandey/glance.git
+cd glance
 ./build_app.sh
 open /Applications/Glance.app
 ```
 
-`build_app.sh` compiles in release mode, runs the automated test suite (`--self-test`), assembles `Glance.app`, signs it, installs it to `/Applications/Glance.app`, and registers it with LaunchServices.
+`build_app.sh` builds a **Universal binary (`arm64` + `x86_64`)**, runs the automated test suite (`--self-test`), assembles `Glance.app`, signs it, installs it to `/Applications/Glance.app`, and registers it with LaunchServices. *(Pass `--package` to also output `Glance-macOS-Universal.zip` and `Glance-macOS-Universal.dmg`.)*
 
 ---
 

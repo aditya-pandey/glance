@@ -4,21 +4,40 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${PROJECT_DIR}"
 APP_NAME="Glance"
-BUILD_DIR="${PROJECT_DIR}/.build/release"
 APP_BUNDLE="${PROJECT_DIR}/${APP_NAME}.app"
+SKIP_INSTALL=false
+PACKAGE_RELEASE=false
 
-echo "🔨 Building ${APP_NAME} in release mode..."
-swift build -c release
+for arg in "$@"; do
+    case "$arg" in
+        --skip-install) SKIP_INSTALL=true ;;
+        --package) PACKAGE_RELEASE=true ;;
+    esac
+done
+
+echo "🔨 Building ${APP_NAME} Universal binary (arm64 + x86_64)..."
+swift build -c release --arch arm64
+swift build -c release --arch x86_64
+
+ARM_BIN="${PROJECT_DIR}/.build/arm64-apple-macosx/release/${APP_NAME}"
+X64_BIN="${PROJECT_DIR}/.build/x86_64-apple-macosx/release/${APP_NAME}"
+UNIV_BIN="${PROJECT_DIR}/.build/${APP_NAME}-universal"
+lipo -create -output "${UNIV_BIN}" "${ARM_BIN}" "${X64_BIN}"
+chmod +x "${UNIV_BIN}"
 
 echo "🧪 Running automated Glance QA & self-test suite..."
-"${BUILD_DIR}/${APP_NAME}" --self-test
+if [ "$(uname -m)" = "arm64" ]; then
+    "${ARM_BIN}" --self-test
+else
+    "${X64_BIN}" --self-test
+fi
 
 echo "📦 Assembling ${APP_NAME}.app bundle..."
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${APP_BUNDLE}/Contents/MacOS"
 mkdir -p "${APP_BUNDLE}/Contents/Resources"
 
-cp "${BUILD_DIR}/${APP_NAME}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
+cp "${UNIV_BIN}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 chmod +x "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 
 if [ -f "${PROJECT_DIR}/Assets/LogoKit/AppIcon.icns" ]; then
@@ -79,16 +98,33 @@ fi
 
 codesign --force --deep --sign "${SIGN_IDENTITY}" --identifier "com.local.Glance" "${APP_BUNDLE}"
 
-echo "📲 Installing ${APP_NAME}.app to /Applications/${APP_NAME}.app..."
-rm -rf "/Applications/${APP_NAME}.app"
-cp -R "${APP_BUNDLE}" "/Applications/${APP_NAME}.app"
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/${APP_NAME}.app" || true
+if [ "${SKIP_INSTALL}" = false ]; then
+    echo "📲 Installing ${APP_NAME}.app to /Applications/${APP_NAME}.app..."
+    rm -rf "/Applications/${APP_NAME}.app"
+    cp -R "${APP_BUNDLE}" "/Applications/${APP_NAME}.app"
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/${APP_NAME}.app" || true
 
-if [ "${SIGN_IDENTITY}" = "-" ]; then
-    tccutil reset Accessibility com.local.Glance || true
+    if [ "${SIGN_IDENTITY}" = "-" ]; then
+        tccutil reset Accessibility com.local.Glance || true
+    fi
+fi
+
+if [ "${PACKAGE_RELEASE}" = true ]; then
+    echo "🗜️  Packaging Glance-macOS-Universal.zip and Glance-macOS-Universal.dmg..."
+    rm -f "${PROJECT_DIR}/Glance-macOS-Universal.zip" "${PROJECT_DIR}/Glance-macOS-Universal.dmg"
+    ditto -c -k --keepParent "${APP_BUNDLE}" "${PROJECT_DIR}/Glance-macOS-Universal.zip"
+    STAGE_DIR="${PROJECT_DIR}/.build/dmg-stage"
+    rm -rf "${STAGE_DIR}"
+    mkdir -p "${STAGE_DIR}"
+    cp -R "${APP_BUNDLE}" "${STAGE_DIR}/${APP_NAME}.app"
+    ln -s /Applications "${STAGE_DIR}/Applications"
+    hdiutil create -volname "${APP_NAME}" -srcfolder "${STAGE_DIR}" -ov -format UDZO "${PROJECT_DIR}/Glance-macOS-Universal.dmg" >/dev/null
+    rm -rf "${STAGE_DIR}"
 fi
 
 echo "✅ Successfully created: ${APP_BUNDLE}"
-echo "✅ Installed to: /Applications/${APP_NAME}.app"
-echo "🚀 To run it, execute:"
-echo "   open /Applications/${APP_NAME}.app"
+if [ "${SKIP_INSTALL}" = false ]; then
+    echo "✅ Installed to: /Applications/${APP_NAME}.app"
+    echo "🚀 To run it, execute:"
+    echo "   open /Applications/${APP_NAME}.app"
+fi
