@@ -1,0 +1,8 @@
+.DS_Store
+.build/
+DerivedData/
+Glance.app/
+Glance.zip
+Assets/LogoKit/AppIcon.iconset/
+Assets/LogoKit/icns-build/
+Assets/LogoKit/menubar-build/
