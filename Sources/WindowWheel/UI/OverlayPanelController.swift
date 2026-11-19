@@ -148,22 +148,13 @@ public final class OverlayPanelController {
             } else if cached.isEmpty && updatedVisible.count >= 2 {
                 self.state.selectedWindowIndex = reverse ? updatedVisible.count - 1 : 1
             }
+            if self.mainPanel?.isVisible == true {
+                self.resizeMainPanelToFit()
+            }
         }
 
-        if sticky {
-            isPendingShow = false
-            showMainPanelNow(sticky: true)
-        } else {
-            // 150 ms quick-tap grace delay: fast Option+Tab taps switch immediately with zero HUD flash
-            isPendingShow = true
-            let work = DispatchWorkItem { [weak self] in
-                guard let self = self, self.mainPanelGeneration == sessionGen, self.isPendingShow else { return }
-                self.isPendingShow = false
-                self.showMainPanelNow(sticky: false)
-            }
-            showDelayWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
-        }
+        isPendingShow = false
+        showMainPanelNow(sticky: sticky)
     }
 
     private func showMainPanelNow(sticky: Bool) {
@@ -172,17 +163,7 @@ public final class OverlayPanelController {
         panel.isStickySearchActive = sticky
         openMouseLocation = NSEvent.mouseLocation
 
-        let screen = NSScreen.screens.first(where: { NSPointInRect(openMouseLocation, $0.frame) }) ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let panelW = min(1008.0, visible.width - 32.0)
-        let panelH = min(668.0, visible.height - 32.0)
-        panel.setContentSize(NSSize(width: panelW, height: panelH))
-
-        let origin = CGPoint(
-            x: round(visible.midX - panelW / 2.0),
-            y: round(visible.midY - panelH / 2.0)
-        )
-        panel.setFrameOrigin(origin)
+        resizeMainPanelToFit(animated: false)
         panel.searchField = state.searchTextField
 
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -205,13 +186,56 @@ public final class OverlayPanelController {
             state.isPresented = true
         } else {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.14
+                ctx.duration = 0.07
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().alphaValue = 1.0
             }
-            withAnimation(.spring(response: 0.22, dampingFraction: 0.86)) {
+            withAnimation(.spring(response: 0.16, dampingFraction: 0.90)) {
                 state.isPresented = true
             }
+        }
+    }
+
+    public func resizeMainPanelToFit(animated: Bool = true) {
+        guard let panel = mainPanel else { return }
+        let refPoint = openMouseLocation == .zero ? NSEvent.mouseLocation : openMouseLocation
+        let screen = NSScreen.screens.first(where: { NSPointInRect(refPoint, $0.frame) }) ?? NSScreen.main
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+
+        let windows = filteredWindows()
+        let tabs = filteredTabs()
+        let needsPerms = !WindowEnumerator.shared.hasScreenRecordingPermission || !WindowEnumerator.shared.hasAccessibilityPermission
+        let bannerH: CGFloat = needsPerms ? 48.0 : 0.0
+        let headerH: CGFloat = 104.0
+
+        let contentH: CGFloat
+        if state.scope == .browserTabs {
+            let tabRows = max(3, min(10, tabs.count))
+            contentH = CGFloat(tabRows) * 48.0 + 54.0
+        } else {
+            let rows = max(1, Int(ceil(Double(max(1, windows.count)) / Double(gridColumns))))
+            let gridH = CGFloat(min(3, rows)) * 188.0 + CGFloat(max(0, min(3, rows) - 1)) * 12.0 + 30.0
+            let tabsExtra: CGFloat = tabs.isEmpty ? 0.0 : min(220.0, CGFloat(tabs.count) * 48.0 + 48.0)
+            contentH = gridH + tabsExtra
+        }
+
+        let panelW = min(1004.0, visible.width - 28.0)
+        let panelH = min(visible.height - 36.0, max(302.0, headerH + bannerH + contentH))
+        let targetFrame = NSRect(
+            x: round(visible.midX - panelW / 2.0),
+            y: round(visible.midY - panelH / 2.0),
+            width: panelW,
+            height: panelH
+        )
+
+        if animated && panel.isVisible && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.15
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                panel.animator().setFrame(targetFrame, display: true)
+            }
+        } else {
+            panel.setFrame(targetFrame, display: panel.isVisible)
         }
     }
 
@@ -514,8 +538,8 @@ public final class OverlayPanelController {
         dockPanelGeneration &+= 1
 
         let cardCount = min(5, appWindows.count)
-        let stripW = CGFloat(cardCount) * 212.0 + CGFloat(max(0, cardCount - 1)) * 10.0 + 48.0
-        let stripH: CGFloat = 212.0
+        let stripW = max(260.0, CGFloat(cardCount) * 212.0 + CGFloat(max(0, cardCount - 1)) * 10.0 + 36.0)
+        let stripH: CGFloat = 224.0
 
         let screen = NSScreen.screens.first(where: { NSPointInRect(CGPoint(x: iconRectAppKit.midX, y: iconRectAppKit.midY), $0.frame) }) ?? NSScreen.main
         let sf = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)

@@ -10,12 +10,13 @@ public struct DockPreviewStripView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+            // Compact floating glass label pill (transparent surrounding area)
+            HStack(spacing: 7) {
                 if let icon = dockState.appIcon {
                     Image(nsImage: icon)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 16, height: 16)
+                        .frame(width: 15, height: 15)
                 }
                 Text(dockState.appName)
                     .font(.system(size: 11.5, weight: .semibold, design: .rounded))
@@ -23,10 +24,20 @@ public struct DockPreviewStripView: View {
                 Text("· \(dockState.windows.count) window\(dockState.windows.count == 1 ? "" : "s")")
                     .font(.system(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(WindowTheme.labelSecondary)
-                Spacer()
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                ZStack {
+                    NativeVibrancyBackground(material: .hudWindow, cornerRadius: 10, tintOpacity: 0.72)
+                    WindowTheme.hudBackground.opacity(0.74)
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.white.opacity(0.16), lineWidth: 0.9))
+            .shadow(color: Color.black.opacity(0.45), radius: 10, x: 0, y: 4)
 
+            // Independent floating preview cards directly over the transparent screen
             HStack(spacing: 10) {
                 ForEach(dockState.windows.prefix(5)) { win in
                     DockMiniCard(
@@ -39,16 +50,6 @@ public struct DockPreviewStripView: View {
             }
         }
         .padding(12)
-        .background(
-            ZStack {
-                NativeVibrancyBackground(material: .hudWindow, cornerRadius: 16, tintOpacity: 0.72)
-                WindowTheme.hudBackground.opacity(0.68)
-            }
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(WindowTheme.specularRimGradient, lineWidth: 1.1))
-        .shadow(color: Color.black.opacity(0.65), radius: 22, x: 0, y: 10)
-        .padding(10)
         .offset(y: dockState.isPresented ? 0 : 8)
         .scaleEffect(dockState.isPresented ? 1.0 : 0.965)
         .opacity(dockState.isPresented ? 1.0 : 0.0)
@@ -107,9 +108,27 @@ struct DockMiniCard: View {
         }
         .padding(8)
         .frame(width: 212)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(isHovered ? WindowTheme.cardSelected : WindowTheme.cardSurface))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(isHovered ? WindowTheme.platinumIce.opacity(0.65) : WindowTheme.cardBorderSubtle, lineWidth: 1))
-        .scaleEffect(isHovered ? 1.015 : 1.0)
+        .background(
+            ZStack {
+                NativeVibrancyBackground(material: .hudWindow, cornerRadius: 12, tintOpacity: 0.72)
+                (isHovered ? Color(red: 0.08, green: 0.11, blue: 0.17) : WindowTheme.hudBackground).opacity(isHovered ? 0.92 : 0.80)
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(
+                    isHovered ? Color(red: 0.36, green: 0.64, blue: 1.0) : Color.black.opacity(0.45),
+                    lineWidth: isHovered ? 2.5 : 1.0
+                )
+        )
+        .shadow(
+            color: isHovered ? Color(red: 0.30, green: 0.56, blue: 0.98).opacity(0.55) : Color.black.opacity(0.46),
+            radius: isHovered ? 15 : 12,
+            x: 0,
+            y: isHovered ? 4 : 6
+        )
+        .scaleEffect(isHovered ? 1.03 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.82), value: isHovered)
         .animation(.easeOut(duration: 0.16), value: thumbnail != nil)
         .contentShape(Rectangle())

@@ -77,9 +77,8 @@ public struct WindowSwitcherOverlayView: View {
         let windows = controller.filteredWindows()
         let tabs = controller.filteredTabs()
 
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             topHeaderBar(windowCount: windows.count, tabCount: tabBridge.tabs.count)
-            Rectangle().fill(WindowTheme.dividerStroke).frame(height: 1)
 
             if !enumerator.hasScreenRecordingPermission || !enumerator.hasAccessibilityPermission {
                 permissionBanner
@@ -96,7 +95,8 @@ public struct WindowSwitcherOverlayView: View {
                             browserTabsSection(tabs: tabs)
                         }
                     }
-                    .padding(18)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
                 }
                 .onChange(of: state.selectedWindowIndex) { _, newIdx in
                     guard newIdx >= 0 && newIdx < windows.count else { return }
@@ -111,27 +111,12 @@ public struct WindowSwitcherOverlayView: View {
                     }
                 }
             }
-
-            Rectangle().fill(WindowTheme.dividerStroke).frame(height: 1)
-            bottomFooterBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            ZStack {
-                NativeVibrancyBackground(material: .hudWindow, cornerRadius: 20, tintOpacity: 0.72)
-                WindowTheme.hudBackground.opacity(0.68)
-            }
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(WindowTheme.specularRimGradient, lineWidth: 1.15)
-        )
-        .shadow(color: Color.black.opacity(0.65), radius: 36, x: 0, y: 18)
         .padding(14)
-        .scaleEffect(state.isPresented ? 1.0 : 0.968)
+        .scaleEffect(state.isPresented ? 1.0 : 0.985)
         .opacity(state.isPresented ? 1.0 : 0.0)
-        .animation(.spring(response: 0.24, dampingFraction: 0.86), value: state.isPresented)
+        .animation(.spring(response: 0.16, dampingFraction: 0.90), value: state.isPresented)
     }
 
     @ViewBuilder
@@ -159,6 +144,7 @@ public struct WindowSwitcherOverlayView: View {
                             BrowserTabBridge.shared.refreshTabsAsync(force: true)
                             controller.transitionToStickySearch(initialChar: nil)
                         }
+                        controller.resizeMainPanelToFit()
                     }) {
                         HStack(spacing: 4) {
                             Text(title)
@@ -216,6 +202,7 @@ public struct WindowSwitcherOverlayView: View {
                 .onChange(of: state.searchQuery) { _, _ in
                     state.selectedWindowIndex = 0
                     state.selectedTabIndex = 0
+                    controller.resizeMainPanelToFit()
                 }
 
                 if !state.searchQuery.isEmpty {
@@ -245,8 +232,18 @@ public struct WindowSwitcherOverlayView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 18)
-        .frame(height: 54)
+        .padding(.horizontal, 12)
+        .frame(height: 48)
+        .background(
+            ZStack {
+                NativeVibrancyBackground(material: .hudWindow, cornerRadius: 14, tintOpacity: 0.72)
+                WindowTheme.hudBackground.opacity(0.76)
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(WindowTheme.specularRimGradient, lineWidth: 1.0))
+        .shadow(color: Color.black.opacity(0.45), radius: 14, x: 0, y: 6)
+        .padding(.horizontal, 8)
     }
 
     @ViewBuilder
@@ -300,9 +297,18 @@ public struct WindowSwitcherOverlayView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.04))
+        .background(
+            ZStack {
+                NativeVibrancyBackground(material: .hudWindow, cornerRadius: 12, tintOpacity: 0.72)
+                WindowTheme.hudBackground.opacity(0.78)
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.white.opacity(0.14), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.40), radius: 10, x: 0, y: 4)
+        .padding(.horizontal, 8)
     }
 
     @ViewBuilder
@@ -337,6 +343,7 @@ public struct WindowSwitcherOverlayView: View {
                             withAnimation(.snappy(duration: 0.2)) {
                                 state.expandedBrowserBundleID = (state.expandedBrowserBundleID == item.bundleID) ? nil : item.bundleID
                             }
+                            controller.resizeMainPanelToFit()
                         },
                         onSnapLeft: {
                             controller.dismissMainGrid(restorePreviousApp: false)
@@ -392,39 +399,6 @@ public struct WindowSwitcherOverlayView: View {
             }
         }
     }
-
-    @ViewBuilder
-    private var bottomFooterBar: some View {
-        HStack(spacing: 14) {
-            footerHint(key: "⌥Tab", label: "Next Window")
-            footerHint(key: "⌥~", label: "Same App")
-            footerHint(key: "Type", label: "Search Windows & Tabs")
-            footerHint(key: "Q / ⌘W", label: "Close")
-            Spacer()
-            Text(state.isStickyMode ? "Pinned Search · ⏎ to Switch · Esc to Close" : "Release ⌥ to Switch")
-                .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                .foregroundStyle(WindowTheme.labelMuted)
-        }
-        .padding(.horizontal, 18)
-        .frame(height: 32)
-        .background(Color.black.opacity(0.42))
-    }
-
-    @ViewBuilder
-    private func footerHint(key: String, label: String) -> some View {
-        HStack(spacing: 4) {
-            Text(key)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .foregroundStyle(Color(white: 0.78))
-                .padding(.horizontal, 4.5)
-                .padding(.vertical, 1.5)
-                .background(Color.white.opacity(0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 3.5))
-            Text(label)
-                .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                .foregroundStyle(WindowTheme.labelSecondary)
-        }
-    }
 }
 
 struct WindowPreviewCard: View {
@@ -457,15 +431,21 @@ struct WindowPreviewCard: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.title)
-                        .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .font(.system(size: 11.5, weight: isSelected ? .bold : .semibold, design: .rounded))
+                        .foregroundStyle(isSelected ? Color.white : Color(white: 0.88))
                         .lineLimit(1)
                     Text(item.appName)
                         .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundStyle(WindowTheme.labelSecondary)
+                        .foregroundStyle(isSelected ? WindowTheme.platinumIce : WindowTheme.labelSecondary)
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                if isSelected {
+                    Circle()
+                        .fill(Color(red: 0.38, green: 0.66, blue: 1.0))
+                        .frame(width: 7, height: 7)
+                }
 
                 if active {
                     Button(action: onClose) {
@@ -482,6 +462,7 @@ struct WindowPreviewCard: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
+            .background(isSelected ? Color(red: 0.25, green: 0.50, blue: 0.94).opacity(0.26) : Color.clear)
 
             // ── Live Window Thumbnail Well ──
             ZStack(alignment: .bottomTrailing) {
@@ -493,7 +474,7 @@ struct WindowPreviewCard: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .opacity((item.isMinimized || item.isHidden) ? 0.45 : 1.0)
+                        .opacity((item.isMinimized || item.isHidden) ? 0.45 : (active ? 1.0 : 0.78))
                         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                         .transition(.opacity)
                 }
@@ -563,16 +544,30 @@ struct WindowPreviewCard: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 8)
         }
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(active ? WindowTheme.cardSelected : WindowTheme.cardSurface))
+        .background(
+            ZStack {
+                NativeVibrancyBackground(material: .hudWindow, cornerRadius: 13, tintOpacity: 0.72)
+                (isSelected ? Color(red: 0.08, green: 0.11, blue: 0.17) : (isHovered ? WindowTheme.cardSelected : WindowTheme.hudBackground))
+                    .opacity(isSelected ? 0.94 : (isHovered ? 0.88 : 0.80))
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
                 .stroke(
-                    isSelected ? WindowTheme.platinumIce.opacity(0.82) : (isHovered ? Color.white.opacity(0.28) : WindowTheme.cardBorderSubtle),
-                    lineWidth: isSelected ? 1.8 : 1.0
+                    isSelected
+                        ? Color(red: 0.36, green: 0.64, blue: 1.0)
+                        : (isHovered ? WindowTheme.platinumIce.opacity(0.60) : Color.black.opacity(0.45)),
+                    lineWidth: isSelected ? 3.0 : 1.0
                 )
         )
-        .shadow(color: isSelected ? WindowTheme.steelSapphire.opacity(0.28) : .clear, radius: 10)
-        .scaleEffect(reduceMotion ? 1.0 : (isSelected ? 1.015 : (isHovered ? 1.007 : 1.0)))
+        .shadow(
+            color: isSelected ? Color(red: 0.30, green: 0.56, blue: 0.98).opacity(0.62) : Color.black.opacity(0.42),
+            radius: isSelected ? 16 : 10,
+            x: 0,
+            y: isSelected ? 4 : 5
+        )
+        .scaleEffect(reduceMotion ? 1.0 : (isSelected ? 1.032 : (isHovered ? 1.012 : 0.985)))
         .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.82), value: isSelected)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovered)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: thumbnail != nil)
@@ -651,8 +646,26 @@ struct BrowserTabRow: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 44)
-        .background(RoundedRectangle(cornerRadius: 9).fill(highlighted ? WindowTheme.cardSelected : WindowTheme.cardSurface))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(highlighted ? Color.white.opacity(0.25) : WindowTheme.cardBorderSubtle, lineWidth: 1))
+        .background(
+            ZStack {
+                NativeVibrancyBackground(material: .hudWindow, cornerRadius: 10, tintOpacity: 0.72)
+                (highlighted ? WindowTheme.cardSelected : WindowTheme.hudBackground).opacity(highlighted ? 0.88 : 0.76)
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(
+                    isSelected ? Color(red: 0.36, green: 0.64, blue: 1.0) : (isHovered ? WindowTheme.platinumIce.opacity(0.65) : Color.black.opacity(0.45)),
+                    lineWidth: isSelected ? 2.5 : 1.0
+                )
+        )
+        .shadow(
+            color: isSelected ? Color(red: 0.30, green: 0.56, blue: 0.98).opacity(0.55) : Color.black.opacity(0.38),
+            radius: isSelected ? 12 : 8,
+            x: 0,
+            y: 4
+        )
         .onHover { hovering in
             isHovered = hovering
             if hovering { onHoverSelect() }
