@@ -1,7 +1,7 @@
 import AppKit
 import ServiceManagement
 
-public final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate {
+public final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var hotkeyManager: HotkeyManager?
     private var dockMenuToggle: NSMenuItem?
@@ -39,22 +39,62 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDe
         }
         DockHoverMonitor.shared.start()
 
-        // 4. Setup Menu Bar Item
+        // 4. Register Launch at Login / Run in Background on first launch outside a mounted DMG
+        configureLaunchAtLoginOnFirstRun()
+
+        // 5. Setup Menu Bar Item
         setupStatusBar()
 
-        // 5. Warm initial window cache off main thread (only pre-warm thumbnails when Screen Recording is already allowed)
+        // 6. Warm initial window cache off main thread (only pre-warm thumbnails when Screen Recording is already allowed)
         WindowEnumerator.shared.refreshWindowsAsync { initialWins in
             if CGPreflightScreenCaptureAccess() {
                 WindowEnumerator.shared.captureThumbnailsAsync(for: initialWins, maxThumbWidth: 260)
             }
         }
 
-        if !AXIsProcessTrusted() && !UserDefaults.standard.bool(forKey: "GlanceShownPermissionsOnce") {
+        let needsApproval = (SMAppService.mainApp.status == .requiresApproval)
+        if (!AXIsProcessTrusted() || needsApproval) && !UserDefaults.standard.bool(forKey: "GlanceShownPermissionsOnce") {
             UserDefaults.standard.set(true, forKey: "GlanceShownPermissionsOnce")
             PermissionsWindowController.shared.show()
         }
 
         print("[Glance] Ready: ⌥Tab = Visual Grid | ⌥~ = Same-App Windows | Dock Hover Previews Active")
+    }
+
+    private func configureLaunchAtLoginOnFirstRun() {
+        let path = Bundle.main.bundlePath
+        guard !path.hasPrefix("/Volumes/"), path.hasSuffix(".app") else { return }
+
+        let key = "GlanceConfiguredLoginItemOnce"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+
+        if SMAppService.mainApp.status == .notRegistered {
+            do {
+                try SMAppService.mainApp.register()
+            } catch {
+                print("[Glance] Initial launch-at-login registration failed: \(error)")
+            }
+        }
+    }
+
+    private func refreshLoginMenuItem() {
+        guard let item = launchAtLoginToggle else { return }
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            item.title = "Launch at Login"
+            item.state = .on
+        case .requiresApproval:
+            item.title = "Approve Background Run in Settings…"
+            item.state = .mixed
+        default:
+            item.title = "Launch at Login"
+            item.state = .off
+        }
+    }
+
+    public func menuWillOpen(_ menu: NSMenu) {
+        refreshLoginMenuItem()
     }
 
     private func setupStatusBar() {
@@ -71,6 +111,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDe
         }
 
         let menu = NSMenu()
+        menu.delegate = self
         let header = NSMenuItem(title: "Glance (⌥ Tab · ⌥ ~)", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
@@ -85,9 +126,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDe
         menu.addItem(dockToggle)
 
         let loginToggle = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-        loginToggle.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
         self.launchAtLoginToggle = loginToggle
         menu.addItem(loginToggle)
+        refreshLoginMenuItem()
 
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Permissions…", action: #selector(openPermissionsWindow), keyEquivalent: ""))
@@ -115,15 +156,21 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, HotkeyManagerDe
 
     @objc private func toggleLaunchAtLogin() {
         do {
-            if SMAppService.mainApp.status == .enabled {
+            switch SMAppService.mainApp.status {
+            case .enabled:
                 try SMAppService.mainApp.unregister()
-            } else {
+            case .requiresApproval:
+                SMAppService.openSystemSettingsLoginItems()
+            default:
                 try SMAppService.mainApp.register()
+                if SMAppService.mainApp.status == .requiresApproval {
+                    SMAppService.openSystemSettingsLoginItems()
+                }
             }
         } catch {
             print("[Glance] Launch at login update error: \(error)")
         }
-        launchAtLoginToggle?.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        refreshLoginMenuItem()
     }
 
     @objc private func openPermissionsWindow() {

@@ -1,19 +1,21 @@
 import AppKit
 import SwiftUI
+import ServiceManagement
 
-/// Compact Permissions & Onboarding window with live 1-second Accessibility polling and Relaunch action
+/// Compact Permissions & Onboarding window with live 1-second Accessibility, Screen Recording, and Launch at Login polling
 public final class PermissionsWindowController: NSObject, NSWindowDelegate {
     public static let shared = PermissionsWindowController()
 
     private var window: NSWindow?
     private var pollTimer: Timer?
+    private let loginStatusModel = LoginItemStatusModel()
 
     private override init() { super.init() }
 
     public func show() {
         if window == nil {
             let win = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 450, height: 250),
+                contentRect: NSRect(x: 0, y: 0, width: 460, height: 308),
                 styleMask: [.titled, .closable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -25,11 +27,14 @@ public final class PermissionsWindowController: NSObject, NSWindowDelegate {
             win.center()
             win.delegate = self
             win.backgroundColor = NSColor(red: 0.055, green: 0.059, blue: 0.070, alpha: 1.0)
-            win.contentView = NSHostingView(rootView: PermissionsSheetView(enumerator: .shared))
+            win.contentView = NSHostingView(
+                rootView: PermissionsSheetView(enumerator: .shared, loginStatus: loginStatusModel)
+            )
             self.window = win
         }
 
         WindowEnumerator.shared.refreshPermissionFlags()
+        loginStatusModel.refresh()
         startPolling()
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
@@ -42,14 +47,43 @@ public final class PermissionsWindowController: NSObject, NSWindowDelegate {
 
     private func startPolling() {
         pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             WindowEnumerator.shared.refreshPermissionFlags()
+            self?.loginStatusModel.refresh()
+        }
+    }
+}
+
+private final class LoginItemStatusModel: ObservableObject {
+    @Published var status: SMAppService.Status = SMAppService.mainApp.status
+
+    func refresh() {
+        let current = SMAppService.mainApp.status
+        if current != status {
+            status = current
+        }
+    }
+
+    func enableOrApprove() {
+        if SMAppService.mainApp.status == .requiresApproval {
+            SMAppService.openSystemSettingsLoginItems()
+            return
+        }
+        do {
+            try SMAppService.mainApp.register()
+        } catch {
+            print("[Glance] Launch at login error: \(error)")
+        }
+        refresh()
+        if status == .requiresApproval {
+            SMAppService.openSystemSettingsLoginItems()
         }
     }
 }
 
 private struct PermissionsSheetView: View {
     @ObservedObject var enumerator: WindowEnumerator
+    @ObservedObject var loginStatus: LoginItemStatusModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -61,7 +95,7 @@ private struct PermissionsSheetView: View {
                     Text("Glance Permissions")
                         .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
-                    Text("Enable once for instant switching, Dock hover & live previews")
+                    Text("Enable once for instant switching, Dock hover & startup background run")
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(WindowTheme.labelSecondary)
                 }
@@ -88,6 +122,18 @@ private struct PermissionsSheetView: View {
                         enumerator.openPrivacyPane(screenRecording: true)
                     }
                 )
+
+                permissionRow(
+                    title: "Run in Background (Launch at Login)",
+                    subtitle: "Starts Glance automatically when you turn on your Mac",
+                    granted: loginStatus.status == .enabled,
+                    buttonTitle: loginStatus.status == .enabled
+                        ? "Enabled"
+                        : (loginStatus.status == .requiresApproval ? "Approve in Settings" : "Enable"),
+                    action: {
+                        loginStatus.enableOrApprove()
+                    }
+                )
             }
 
             HStack {
@@ -103,7 +149,7 @@ private struct PermissionsSheetView: View {
             }
         }
         .padding(20)
-        .frame(width: 450, height: 250)
+        .frame(width: 460, height: 308)
         .background(NativeVibrancyBackground(material: .hudWindow, cornerRadius: 12, tintOpacity: 0.72))
     }
 
